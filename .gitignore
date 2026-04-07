@@ -1,0 +1,13 @@
+# Session / tooling state
+.claude/
+phase2-run.log
+*.log
+
+# Secrets (belt-and-suspenders — nested .gitignore also excludes these)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

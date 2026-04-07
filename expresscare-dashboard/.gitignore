@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.env
+.env.local
+
+# Generated data — the scripts are the source of truth
+scripts/data/
+collector/data/
+public/data/
+model/data/
+model/output/
+model/.venv/
+model/__pycache__/
+**/__pycache__/
+**/*.pyc
+
+# Editor
+.vscode/
+.idea/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

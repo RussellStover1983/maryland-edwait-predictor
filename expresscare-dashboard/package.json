@@ -1,0 +1,50 @@
+{
+  "name": "expresscare-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Real-time geographic demand intelligence dashboard for ExpressCare Maryland, fusing live EDAS ED capacity with GeoHealth SDOH data and a LightGBM forecast model.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "collect": "tsx collector/collect.ts",
+    "collect:once": "tsx collector/collect.ts --once",
+    "geocode:expresscare": "tsx scripts/geocode-expresscare-locations.ts",
+    "geocode:competitors": "tsx scripts/geocode-competitor-locations.ts",
+    "hexgrid": "tsx scripts/generate-hex-grid.ts",
+    "cms": "tsx scripts/fetch-cms-hospital-data.ts",
+    "weather": "tsx scripts/fetch-weather-history.ts",
+    "flu": "tsx scripts/fetch-flu-data.ts",
+    "base-scores": "tsx scripts/precompute-base-scores.ts",
+    "prepare-data": "npm run cms && npm run geocode:expresscare && npm run geocode:competitors && npm run hexgrid && npm run base-scores && npm run weather && npm run flu && npm run copy-data",
+    "copy-data": "node -e \"require('fs').cpSync('scripts/data','public/data',{recursive:true})\""
+  },
+  "dependencies": {
+    "@types/sql.js": "^1.4.11",
+    "dotenv": "^17.4.1",
+    "h3-js": "^4.1.0",
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "recharts": "^2.13.3",
+    "sql.js": "^1.14.1",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.14",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "csv-parse": "^5.5.6",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.14",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
