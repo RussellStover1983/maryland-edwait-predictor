@@ -1,0 +1,25 @@
+FROM node:20-slim AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+COPY tsconfig.json ./
+COPY collector/ ./collector/
+COPY src/types/ ./src/types/
+
+FROM node:20-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/collector ./collector
+COPY --from=builder /app/src/types ./src/types
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/tsconfig.json ./
+
+# tsx is in devDependencies — install it separately for runtime .ts execution
+RUN npm install tsx
+
+ENV NODE_ENV=production
+ENV POLL_INTERVAL_MS=300000
+ENV COLLECTOR_USER_AGENT=expresscare-dashboard-collector/0.1
+
+CMD ["npx", "tsx", "collector/collect.ts"]

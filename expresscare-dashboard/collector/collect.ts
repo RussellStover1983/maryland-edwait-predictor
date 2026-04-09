@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { resolve } from 'node:path';
-import { openDb, insertSnapshot, insertLog, saveDb, queryScalar } from './db';
+import { openDb, insertSnapshot, insertLog, saveDb, queryScalar, closeDb } from './db';
 import type { EdasHospitalStatusEnvelope, EdasFacility } from '../src/types/edas';
 
 const BASE_URL = process.env.EDAS_BASE_URL || 'https://edas.miemss.org/edas-services/api';
@@ -33,6 +33,7 @@ async function fetchWithRetry<T>(url: string): Promise<T> {
 
 async function pollOnce(): Promise<void> {
   const handle = await openDb(DB_PATH);
+  console.log(`[collector] Backend: ${handle.backend} ${handle.backend === 'postgres' ? '(Railway)' : `(${DB_PATH})`}`);
   const now = new Date().toISOString();
 
   try {
@@ -45,7 +46,7 @@ async function pollOnce(): Promise<void> {
     const hospitals = statusEnvelope.results;
     for (const h of hospitals) {
       const alerts = h.alerts;
-      insertSnapshot(handle, {
+      await insertSnapshot(handle, {
         timestamp: now,
         hospital_code: h.destinationCode,
         hospital_name: h.destinationName,
@@ -64,29 +65,29 @@ async function pollOnce(): Promise<void> {
       });
     }
 
-    insertLog(handle, {
+    await insertLog(handle, {
       timestamp: now,
       hospitals_collected: hospitals.length,
       success: 1,
       error_message: null,
     });
 
-    saveDb(handle);
+    await saveDb(handle);
 
-    const snapCount = queryScalar(handle, 'SELECT count(*) FROM hospital_snapshots');
-    const logCount = queryScalar(handle, 'SELECT count(*) FROM collection_log');
+    const snapCount = await queryScalar(handle, 'SELECT count(*) FROM hospital_snapshots');
+    const logCount = await queryScalar(handle, 'SELECT count(*) FROM collection_log');
     console.log(`[collector] OK: ${hospitals.length} hospitals inserted. Total snapshots=${snapCount}, logs=${logCount}`);
   } catch (err) {
-    insertLog(handle, {
+    await insertLog(handle, {
       timestamp: now,
       hospitals_collected: 0,
       success: 0,
       error_message: (err as Error).message,
     });
-    saveDb(handle);
+    await saveDb(handle);
     console.error(`[collector] Collection failed: ${(err as Error).message}`);
   } finally {
-    handle.db.close();
+    await closeDb(handle);
   }
 }
 
