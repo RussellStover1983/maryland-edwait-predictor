@@ -1,38 +1,74 @@
-import { useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ReferenceLine, ResponsiveContainer, Tooltip } from 'recharts';
 import { useDashboardStore } from '../../store/dashboardStore';
-import { placeholderForecast, getHospitalBaseline } from '../../services/predictor';
+import { forecast, getModelMeta } from '../../services/predictor';
 import type { NormalizedHospital } from '../../types/edas';
 
 interface Props {
   hospitals: NormalizedHospital[];
 }
 
+interface ChartPoint {
+  time: string;
+  hoursAhead: number;
+  p10: number;
+  p50: number;
+  p90: number;
+  isCurrent: boolean;
+}
+
 export default function ForecastChart({ hospitals }: Props) {
   const selectedHospital = useDashboardStore((s) => s.selectedHospital);
   const hospital = hospitals.find((h) => h.code === selectedHospital);
 
-  const chartData = useMemo(() => {
-    if (!hospital) return null;
+  const [chartData, setChartData] = useState<ChartPoint[] | null>(null);
+  const [modelLabel, setModelLabel] = useState<string>('LOADING...');
+
+  // Load model metadata once
+  useEffect(() => {
+    getModelMeta().then((meta) => {
+      if (meta.loaded) {
+        setModelLabel(`LightGBM ${meta.treeCount}T | MAE: ${meta.mae1h?.toFixed(2) ?? '?'}`);
+      } else {
+        setModelLabel('PLACEHOLDER MODEL');
+      }
+    });
+  }, []);
+
+  // Run forecast when hospital changes
+  useEffect(() => {
+    if (!hospital) {
+      setChartData(null);
+      return;
+    }
 
     const currentScore = hospital.edCensusScore ?? 2;
     const currentHour = new Date().getHours();
-    const baseline = getHospitalBaseline(hospital.code);
-    const forecast = placeholderForecast(currentScore, currentHour, baseline);
 
-    return forecast.p50.map((p50, i) => {
-      const hoursAhead = i * 0.5;
-      const time = new Date();
-      time.setMinutes(time.getMinutes() + hoursAhead * 60);
+    forecast(currentScore, currentHour, hospital.code, {
+      numUnits: hospital.numUnits ?? 0,
+      numUnitsEnroute: hospital.numUnitsEnroute ?? 0,
+      minStay: hospital.minStay ?? 0,
+      maxStay: hospital.maxStay ?? 0,
+      alertYellow: !!hospital.alerts?.yellow,
+      alertRed: !!hospital.alerts?.red,
+      alertReroute: !!hospital.alerts?.reroute,
+    }).then((result) => {
+      const points: ChartPoint[] = result.p50.map((p50, i) => {
+        const hoursAhead = i * 0.5;
+        const time = new Date();
+        time.setMinutes(time.getMinutes() + hoursAhead * 60);
 
-      return {
-        time: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-        hoursAhead,
-        p10: forecast.p10[i],
-        p50,
-        p90: forecast.p90[i],
-        isCurrent: i === 0,
-      };
+        return {
+          time: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+          hoursAhead,
+          p10: result.p10[i],
+          p50,
+          p90: result.p90[i],
+          isCurrent: i === 0,
+        };
+      });
+      setChartData(points);
     });
   }, [hospital]);
 
@@ -56,7 +92,7 @@ export default function ForecastChart({ hospitals }: Props) {
           </span>
         </div>
         <span className="text-[9px] text-text-muted bg-elevated px-2 py-0.5 rounded">
-          PLACEHOLDER MODEL
+          {modelLabel}
         </span>
       </div>
 

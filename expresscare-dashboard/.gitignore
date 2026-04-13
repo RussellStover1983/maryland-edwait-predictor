@@ -9,8 +9,10 @@ collector/data/
 public/data/
 model/data/
 model/output/
+model/venv/
 model/.venv/
 model/__pycache__/
+model/artifacts/
 **/__pycache__/
 **/*.pyc
 

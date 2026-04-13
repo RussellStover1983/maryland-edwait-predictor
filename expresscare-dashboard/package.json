@@ -19,7 +19,13 @@
     "flu": "tsx scripts/fetch-flu-data.ts",
     "base-scores": "tsx scripts/precompute-base-scores.ts",
     "prepare-data": "npm run cms && npm run geocode:expresscare && npm run geocode:competitors && npm run hexgrid && npm run base-scores && npm run weather && npm run flu && npm run copy-data",
-    "copy-data": "node -e \"require('fs').cpSync('scripts/data','public/data',{recursive:true})\""
+    "copy-data": "node -e \"require('fs').cpSync('scripts/data','public/data',{recursive:true})\"",
+    "model:extract": "cd model && source venv/Scripts/activate && python extract_training_data.py",
+    "model:hscrc": "cd model && source venv/Scripts/activate && python parse_hscrc.py",
+    "model:features": "cd model && source venv/Scripts/activate && python features.py",
+    "model:train": "cd model && source venv/Scripts/activate && python train.py",
+    "model:export": "cd model && source venv/Scripts/activate && python export_model.py && python generate_baselines.py",
+    "model:pipeline": "npm run model:extract && npm run model:hscrc && npm run model:features && npm run model:train && npm run model:export"
   },
   "dependencies": {
     "@types/sql.js": "^1.4.11",
