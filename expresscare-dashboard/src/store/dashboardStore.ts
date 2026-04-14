@@ -15,6 +15,9 @@ interface DashboardState {
     coverageGaps: boolean;
     sviChoropleth: boolean;
   };
+  showDataDefinitions: boolean;
+  view: 'map' | 'hospitalTable';
+  selectedTableHospital: string | null;
   setViewport: (vp: Partial<DashboardState['viewport']>) => void;
   selectHospital: (code: string | null) => void;
   selectExpressCare: (id: string | null) => void;
@@ -22,6 +25,9 @@ interface DashboardState {
   setTimelineOffset: (hours: number) => void;
   setPlaying: (playing: boolean) => void;
   toggleLayer: (layer: keyof DashboardState['layers']) => void;
+  toggleDataDefinitions: () => void;
+  setView: (view: 'map' | 'hospitalTable') => void;
+  selectTableHospital: (code: string | null) => void;
 }
 
 export const useDashboardStore = create<DashboardState>((set) => ({
@@ -47,4 +53,10 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   setPlaying: (playing) => set({ isPlaying: playing }),
   toggleLayer: (layer) =>
     set((s) => ({ layers: { ...s.layers, [layer]: !s.layers[layer] } })),
+  showDataDefinitions: false,
+  toggleDataDefinitions: () => set((s) => ({ showDataDefinitions: !s.showDataDefinitions })),
+  view: 'map',
+  setView: (view) => set({ view }),
+  selectedTableHospital: null,
+  selectTableHospital: (code) => set({ selectedTableHospital: code }),
 }));

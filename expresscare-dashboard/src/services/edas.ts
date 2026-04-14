@@ -5,8 +5,9 @@ import type {
 } from '../types/edas';
 
 const BASE_URL =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EDAS_BASE_URL) ||
-  'https://edas.miemss.org/edas-services/api';
+  import.meta.env?.DEV
+    ? '/api/edas'
+    : (import.meta.env?.VITE_EDAS_BASE_URL || 'https://edas.miemss.org/edas-services/api');
 
 const USER_AGENT = 'expresscare-dashboard/0.1 (+contact)';
 
@@ -29,6 +30,8 @@ async function fetchWithRetry<T>(url: string, signal?: AbortSignal): Promise<T> 
       }
       return (await res.json()) as T;
     } catch (err) {
+      // Don't retry or log aborted requests (React strict mode double-mount)
+      if ((err as Error).name === 'AbortError') throw err;
       const latency = Date.now() - start;
       console.warn(`[edas] FAIL ${url} (${latency}ms, attempt ${attempt}): ${err}`);
       if (attempt === maxAttempts) throw err;

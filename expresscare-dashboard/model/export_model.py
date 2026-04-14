@@ -1,10 +1,28 @@
 """Export trained LightGBM models to JSON for browser-side inference."""
 
 import json
+import math
 import shutil
 from pathlib import Path
 
 import lightgbm as lgb
+
+
+def sanitize_nans(obj):
+    """Replace NaN/Inf floats with null for valid JSON output.
+
+    LightGBM's dump_model() can produce NaN values in tree thresholds
+    and leaf values. NaN is not valid JSON — browsers reject it.
+    """
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: sanitize_nans(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_nans(v) for v in obj]
+    return obj
 
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 PUBLIC_MODEL = Path(__file__).resolve().parent.parent / "public" / "data" / "model"
@@ -23,7 +41,7 @@ def main():
     if model_1h_path.exists():
         print("Exporting 1h model...")
         booster_1h = lgb.Booster(model_file=str(model_1h_path))
-        model_json_1h = booster_1h.dump_model()
+        model_json_1h = sanitize_nans(booster_1h.dump_model())
         with open(ARTIFACTS / "lgbm_1h.json", "w") as f:
             json.dump(model_json_1h, f)
         shutil.copy(ARTIFACTS / "lgbm_1h.json", PUBLIC_MODEL / "lgbm_1h.json")
@@ -36,7 +54,7 @@ def main():
     if model_4h_path.exists():
         print("Exporting 4h model...")
         booster_4h = lgb.Booster(model_file=str(model_4h_path))
-        model_json_4h = booster_4h.dump_model()
+        model_json_4h = sanitize_nans(booster_4h.dump_model())
         with open(ARTIFACTS / "lgbm_4h.json", "w") as f:
             json.dump(model_json_4h, f)
         shutil.copy(ARTIFACTS / "lgbm_4h.json", PUBLIC_MODEL / "lgbm_4h.json")

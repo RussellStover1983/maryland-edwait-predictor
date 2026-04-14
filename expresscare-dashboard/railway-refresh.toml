@@ -1,0 +1,6 @@
+[build]
+dockerfilePath = "Dockerfile.refresh"
+
+[deploy]
+cronSchedule = "0 6 * * 1"
+restartPolicyType = "NEVER"

@@ -4,6 +4,7 @@ Produces a JSON mapping hospital_code -> [24 hourly mean census scores].
 """
 
 import json
+import math
 import shutil
 from pathlib import Path
 
@@ -38,7 +39,10 @@ def main():
             profile[int(row["hour"])] = round(row["ed_census_score"], 2)
         # Fill any missing hours with overall hospital mean
         mean_val = round(hosp["ed_census_score"].mean(), 2)
-        profile = [v if v is not None else mean_val for v in profile]
+        # Default to 2.0 if no data at all for this hospital
+        if math.isnan(mean_val):
+            mean_val = 2.0
+        profile = [v if (v is not None and not math.isnan(v)) else mean_val for v in profile]
         result[str(hcode)] = profile
 
     output_path = ARTIFACTS / "hospital_baselines.json"

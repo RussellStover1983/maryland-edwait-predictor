@@ -3,6 +3,7 @@ import { useDashboardStore } from '../../store/dashboardStore';
 interface HexBaseScore {
   h3Index: string;
   baseScore: number;
+  centroid: { lat: number; lng: number };
   components: {
     healthBurden: number;
     socialVulnerability: number;
@@ -13,14 +14,8 @@ interface HexBaseScore {
   nearestExpressCare: { id: string; name: string; distanceMiles: number };
 }
 
-interface HexCell {
-  h3Index: string;
-  centroid: { lat: number; lng: number };
-}
-
 interface Props {
   hexScores: HexBaseScore[];
-  hexGrid: HexCell[];
 }
 
 function primaryDriver(c: HexBaseScore['components']): string {
@@ -34,9 +29,8 @@ function primaryDriver(c: HexBaseScore['components']): string {
   return entries[0][0];
 }
 
-export default function ExpansionOpportunities({ hexScores, hexGrid }: Props) {
+export default function ExpansionOpportunities({ hexScores }: Props) {
   const setViewport = useDashboardStore((s) => s.setViewport);
-  const centroidMap = new Map(hexGrid.map((h) => [h.h3Index, h.centroid]));
 
   const opportunities = hexScores
     .filter((h) => h.nearestExpressCare.distanceMiles > 8)
@@ -48,7 +42,6 @@ export default function ExpansionOpportunities({ hexScores, hexGrid }: Props) {
       <div className="section-label mb-2">Expansion Opportunities</div>
       <div className="space-y-1">
         {opportunities.map((hex, i) => {
-          const centroid = centroidMap.get(hex.h3Index);
           const driver = primaryDriver(hex.components);
 
           return (
@@ -56,7 +49,7 @@ export default function ExpansionOpportunities({ hexScores, hexGrid }: Props) {
               key={hex.h3Index}
               className="flex items-center gap-2 p-1.5 rounded hover:bg-elevated transition-colors cursor-pointer"
               onClick={() => {
-                if (centroid) setViewport({ lat: centroid.lat, lng: centroid.lng, zoom: 11 });
+                if (hex.centroid) setViewport({ lat: hex.centroid.lat, lng: hex.centroid.lng, zoom: 11 });
               }}
             >
               <span className="text-[10px] text-text-muted mono w-4">#{i + 1}</span>

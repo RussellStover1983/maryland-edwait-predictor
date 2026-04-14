@@ -13,7 +13,6 @@ const API_BASE = 'https://geohealth-api-production.up.railway.app';
 interface HexCell {
   h3Index: string;
   centroid: { lat: number; lng: number };
-  boundary: Array<{ lat: number; lng: number }>;
 }
 
 interface ExpressCareLocation {
@@ -26,6 +25,7 @@ interface ExpressCareLocation {
 interface HexBaseScore {
   h3Index: string;
   baseScore: number;
+  centroid: { lat: number; lng: number };
   components: {
     healthBurden: number;
     socialVulnerability: number;
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
     const slice = hexCells.slice(i, i + BATCH_SIZE);
     batches.push({
       cells: slice,
-      addresses: slice.map((c) => `${c.centroid.lat},${c.centroid.lng}`),
+      addresses: slice.map((c) => `${c.centroid.lng},${c.centroid.lat}`),
     });
   }
 
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
       const result = results[j];
       const nearest = findNearestExpressCare(cell.centroid.lat, cell.centroid.lng, ecLocations);
       rawResults.set(cell.h3Index, {
-        tract: result?.status === 'success' ? result.tract : undefined,
+        tract: (result?.status === 'success' || result?.status === 'ok') ? result.tract : undefined,
         nearest,
       });
     }
@@ -277,6 +277,7 @@ async function main(): Promise<void> {
     hexScores.push({
       h3Index: cell.h3Index,
       baseScore,
+      centroid: cell.centroid,
       components: {
         healthBurden: Math.round(healthBurden * 1000) / 1000,
         socialVulnerability: Math.round(socialVulnerability * 1000) / 1000,
@@ -289,7 +290,7 @@ async function main(): Promise<void> {
     });
   }
 
-  writeFileSync(OUT, JSON.stringify(hexScores, null, 2));
+  writeFileSync(OUT, JSON.stringify(hexScores));
   console.log(`\n[base-scores] Done: ${hexScores.length} hex scores written to ${OUT}`);
 
   // Clean up partial file

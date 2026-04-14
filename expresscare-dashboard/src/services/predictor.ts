@@ -80,17 +80,20 @@ async function loadModel(): Promise<boolean> {
   loadAttempted = true;
 
   try {
+    const cacheBust = `?v=${Date.now()}`;
     const [modelRes, configRes, baselinesRes] = await Promise.all([
-      fetch('/data/model/lgbm_1h.json'),
-      fetch('/data/model/inference_config.json'),
-      fetch('/data/model/hospital_baselines.json'),
+      fetch(`/data/model/lgbm_1h.json${cacheBust}`),
+      fetch(`/data/model/inference_config.json${cacheBust}`),
+      fetch(`/data/model/hospital_baselines.json${cacheBust}`),
     ]);
 
     if (!modelRes.ok || !configRes.ok) {
       throw new Error(`Model load failed: model=${modelRes.status}, config=${configRes.status}`);
     }
 
-    model1h = await modelRes.json();
+    // LightGBM JSON may contain NaN tokens (invalid JSON) — sanitize before parsing
+    const modelText = await modelRes.text();
+    model1h = JSON.parse(modelText.replace(/:\s*NaN\b/g, ': null').replace(/\[\s*NaN\b/g, '[null').replace(/,\s*NaN\b/g, ', null'));
     config = await configRes.json();
     baselines = baselinesRes.ok ? await baselinesRes.json() : null;
 

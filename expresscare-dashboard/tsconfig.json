@@ -21,6 +21,6 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "collector", "scripts", "vite.config.ts"],
+  "include": ["src", "collector", "scripts", "server", "vite.config.ts"],
   "exclude": ["node_modules", "dist", "model"]
 }
