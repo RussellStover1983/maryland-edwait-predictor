@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useMap } from 'react-leaflet';
 import { Deck, MapView } from '@deck.gl/core';
 import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { useDashboardStore } from '../../store/dashboardStore';
 
 interface HexScore {
   h3Index: string;
@@ -79,7 +80,7 @@ function getViewState(map: L.Map) {
 
 // Maryland state FIPS = "24"
 function isMarylandHex(h: HexScore): boolean {
-  return h.tractGeoid.startsWith('24') || h.population > 0;
+  return h.tractGeoid.startsWith('24');
 }
 
 export default function DeckHexLayer({ hexScores, mode }: Props) {
@@ -88,24 +89,25 @@ export default function DeckHexLayer({ hexScores, mode }: Props) {
   const deckRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const selectedHex = useDashboardStore((s) => s.selectedHex);
+
+  const marylandOnly = hexScores.filter(isMarylandHex);
 
   const filteredData = (() => {
     switch (mode) {
       case 'coverageGaps':
-        // Only Maryland hexes that are underserved
-        return hexScores.filter(
-          (h) => isMarylandHex(h) && h.baseScore > 65 && h.nearestExpressCare.distanceMiles > 8,
+        return marylandOnly.filter(
+          (h) => h.baseScore > 65 && h.nearestExpressCare.distanceMiles > 8,
         );
       case 'sviChoropleth':
-        // Only hexes with actual SVI data
-        return hexScores.filter((h) => h.components.socialVulnerability > 0);
+        return marylandOnly.filter((h) => h.components.socialVulnerability > 0);
       default:
-        return hexScores;
+        return marylandOnly;
     }
   })();
 
-  const buildLayers = useCallback((data: HexScore[], layerMode: HexMode) => {
-    return [
+  const buildLayers = useCallback((data: HexScore[], layerMode: HexMode, highlightH3: string | null) => {
+    const layers = [
       new H3HexagonLayer<HexScore>({
         id: 'hex-layer',
         data,
@@ -129,8 +131,35 @@ export default function DeckHexLayer({ hexScores, mode }: Props) {
         autoHighlight: true,
         highlightColor: [255, 255, 255, 60],
         opacity: layerMode === 'coverageGaps' ? 0.5 : 0.35,
+        updateTriggers: {
+          getFillColor: [layerMode],
+          getLineColor: [layerMode],
+        },
       }),
     ];
+
+    // Bright highlight ring for the selected expansion opportunity hex
+    if (highlightH3) {
+      const selectedData = data.filter((d) => d.h3Index === highlightH3);
+      if (selectedData.length > 0) {
+        layers.push(
+          new H3HexagonLayer<HexScore>({
+            id: 'hex-highlight',
+            data: selectedData,
+            getHexagon: (d: HexScore) => d.h3Index,
+            getFillColor: [59, 130, 246, 160],
+            extruded: false,
+            filled: true,
+            stroked: true,
+            getLineColor: [255, 255, 255, 255],
+            lineWidthMinPixels: 4,
+            opacity: 1,
+          }),
+        );
+      }
+    }
+
+    return layers;
   }, []);
 
   // Initialize deck.gl
@@ -155,7 +184,7 @@ export default function DeckHexLayer({ hexScores, mode }: Props) {
       views: new MapView({ repeat: true }),
       initialViewState: getViewState(map),
       controller: false,
-      layers: buildLayers(filteredData, mode),
+      layers: buildLayers(filteredData, mode, selectedHex),
     });
     deckRef.current = deck;
 
@@ -211,9 +240,9 @@ export default function DeckHexLayer({ hexScores, mode }: Props) {
   // Update layers when data or mode changes
   useEffect(() => {
     if (deckRef.current) {
-      deckRef.current.setProps({ layers: buildLayers(filteredData, mode) });
+      deckRef.current.setProps({ layers: buildLayers(filteredData, mode, selectedHex) });
     }
-  }, [filteredData, mode, buildLayers]);
+  }, [filteredData, mode, selectedHex, buildLayers]);
 
   if (!tooltip) return null;
 

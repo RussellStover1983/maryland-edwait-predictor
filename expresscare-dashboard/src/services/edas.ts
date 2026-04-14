@@ -4,10 +4,7 @@ import type {
   EdasJurisdiction,
 } from '../types/edas';
 
-const BASE_URL =
-  import.meta.env?.DEV
-    ? '/api/edas'
-    : (import.meta.env?.VITE_EDAS_BASE_URL || 'https://edas.miemss.org/edas-services/api');
+const BASE_URL = '/api/edas';
 
 const USER_AGENT = 'expresscare-dashboard/0.1 (+contact)';
 

@@ -57,10 +57,12 @@ export default function App() {
   const [competitors, setCompetitors] = useState<CompetitorLocation[]>([]);
 
   useEffect(() => {
+    const dataUrl = (staticPath: string, apiKey: string) =>
+      import.meta.env.DEV ? staticPath : `/api/model/${apiKey}`;
     Promise.all([
-      fetch('/data/hex-base-scores.json').then((r) => r.json()),
-      fetch('/data/expresscare-locations.json').then((r) => r.json()),
-      fetch('/data/competitor-locations.json').then((r) => r.json()),
+      fetch(dataUrl('/data/hex-base-scores.json', 'hex_base_scores')).then((r) => r.json()),
+      fetch(dataUrl('/data/expresscare-locations.json', 'expresscare_locations')).then((r) => r.json()),
+      fetch(dataUrl('/data/competitor-locations.json', 'competitor_locations')).then((r) => r.json()),
     ]).then(([scores, ec, comp]) => {
       setHexScores(scores);
       setEcLocations(ec);

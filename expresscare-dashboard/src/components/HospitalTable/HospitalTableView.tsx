@@ -172,14 +172,12 @@ export default function HospitalTableView({ hospitals }: Props) {
           All Hospitals
         </button>
         <button
-          onClick={() => {
-            if (selectedTableHospital) setActiveTab('detail');
-          }}
+          onClick={() => setActiveTab('detail')}
           className={`py-2 px-3 text-[11px] font-bold border-b-2 transition-colors ${
             activeTab === 'detail'
               ? 'border-accent text-accent'
               : 'border-transparent text-text-secondary hover:text-text-primary'
-          } ${!selectedTableHospital ? 'opacity-50 cursor-not-allowed' : ''}`}
+          }`}
         >
           Hospital Detail
         </button>
@@ -201,8 +199,14 @@ export default function HospitalTableView({ hospitals }: Props) {
           summary={summary}
         />
       ) : (
-        <div className="flex-1 flex items-center justify-center text-text-muted text-[12px]">
-          Select a hospital from the table
+        <div className="flex-1 flex flex-col items-center justify-center text-text-muted text-[12px] gap-3">
+          <div>No hospital selected</div>
+          <button
+            onClick={() => setActiveTab('all')}
+            className="text-accent hover:underline text-[11px]"
+          >
+            Go to All Hospitals table to select one
+          </button>
         </div>
       )}
     </div>
@@ -309,6 +313,31 @@ function Th({
 
 /* ---------- Hospital Detail Tab ---------- */
 
+function HelpButton({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block ml-1.5">
+      <button
+        onClick={() => setShow(!show)}
+        className="w-4 h-4 rounded-full border border-text-muted text-text-muted text-[10px] inline-flex items-center justify-center hover:border-accent hover:text-accent transition-colors"
+      >
+        ?
+      </button>
+      {show && (
+        <div className="absolute left-6 top-0 z-50 w-[320px] bg-panel border border-border rounded p-3 shadow-xl text-[10px] text-text-secondary leading-relaxed">
+          <button
+            onClick={() => setShow(false)}
+            className="absolute top-1 right-2 text-text-muted hover:text-text-primary text-[12px]"
+          >
+            x
+          </button>
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function HospitalDetailTab({
   code,
   hospitals,
@@ -398,6 +427,7 @@ function HospitalDetailTab({
       {/* Time range toggles */}
       <div className="flex items-center gap-2">
         <span className="section-label">Census History</span>
+        <HelpButton text="ED Census History shows the hourly average and maximum ED Census Indicator Score for this hospital over the selected time period. The Census Score (1-4) is reported in real-time by each Maryland hospital to MIEMSS via the EDAS system. Level 1 (Normal) = 0-75% of functional ED capacity. Level 2 (Advisory) = 76-100%. Level 3 (Alert) = 101-130%, indicating significant crowding. Level 4 (Overcapacity) = 131%+, indicating severe crowding. The blue line shows the hourly average across all 5-minute snapshots in each hour. The shaded area shows the maximum score reached during each hour. Data is collected every 5 minutes by the EDAS collector running on Railway and stored in Postgres." />
         <div className="flex gap-1 ml-auto">
           {[
             { label: '24h', value: 24 },
@@ -490,7 +520,10 @@ function HospitalDetailTab({
       {/* EMS Units chart */}
       {chartData.length > 0 && (
         <>
-          <div className="section-label">EMS Units History</div>
+          <div className="flex items-center gap-0">
+            <span className="section-label">EMS Units History</span>
+            <HelpButton text="EMS Units History shows the hourly average and maximum number of EMS (ambulance) units at this hospital over the selected time period. 'Units at ED' counts ambulance crews that have arrived at the hospital and are either transferring patient care or waiting to offload. High unit counts indicate ambulance offload delays -- EMS crews stuck waiting because the ED has no available beds to receive patients. This metric is a leading indicator of ED congestion. The green line shows the hourly average, and the shaded area shows the peak unit count per hour. A sustained count above 3-4 units suggests systematic throughput problems. Data source: MIEMSS EDAS, collected every 5 minutes." />
+          </div>
           <div className="h-[200px] bg-elevated rounded p-2">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 8, right: 12, bottom: 4, left: 12 }}>

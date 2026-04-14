@@ -81,10 +81,14 @@ async function loadModel(): Promise<boolean> {
 
   try {
     const cacheBust = `?v=${Date.now()}`;
+    const url = (staticPath: string, apiKey: string) =>
+      import.meta.env.DEV
+        ? `${staticPath}${cacheBust}`
+        : `/api/model/${apiKey}${cacheBust}`;
     const [modelRes, configRes, baselinesRes] = await Promise.all([
-      fetch(`/data/model/lgbm_1h.json${cacheBust}`),
-      fetch(`/data/model/inference_config.json${cacheBust}`),
-      fetch(`/data/model/hospital_baselines.json${cacheBust}`),
+      fetch(url('/data/model/lgbm_1h.json', 'lgbm_1h')),
+      fetch(url('/data/model/inference_config.json', 'inference_config')),
+      fetch(url('/data/model/hospital_baselines.json', 'hospital_baselines')),
     ]);
 
     if (!modelRes.ok || !configRes.ok) {
