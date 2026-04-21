@@ -25,7 +25,8 @@
     "model:features": "cd model && source venv/Scripts/activate && python features.py",
     "model:train": "cd model && source venv/Scripts/activate && python train.py",
     "model:export": "cd model && source venv/Scripts/activate && python export_model.py && python generate_baselines.py",
-    "model:pipeline": "npm run model:extract && npm run model:hscrc && npm run model:features && npm run model:train && npm run model:export"
+    "model:pipeline": "npm run model:extract && npm run model:hscrc && npm run model:features && npm run model:train && npm run model:export",
+    "model:test": "cd model && source venv/Scripts/activate && pytest"
   },
   "dependencies": {
     "@deck.gl/core": "^9.2.11",
