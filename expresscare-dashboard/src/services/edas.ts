@@ -3,12 +3,18 @@ import type {
   EdasHospitalStatusEnvelope,
   EdasJurisdiction,
 } from '../types/edas';
+import {
+  EdasFacilitiesResponseSchema,
+  EdasHospitalStatusEnvelopeSchema,
+  EdasJurisdictionsResponseSchema,
+  parseEdas,
+} from '../validation/edasSchemas';
 
 const BASE_URL = '/api/edas';
 
 const USER_AGENT = 'expresscare-dashboard/0.1 (+contact)';
 
-async function fetchWithRetry<T>(url: string, signal?: AbortSignal): Promise<T> {
+async function fetchWithRetry(url: string, signal?: AbortSignal): Promise<unknown> {
   const maxAttempts = 3;
   const baseDelay = 500;
 
@@ -25,7 +31,7 @@ async function fetchWithRetry<T>(url: string, signal?: AbortSignal): Promise<T> 
       if (!res.ok) {
         throw new Error(`EDAS ${res.status}: ${res.statusText}`);
       }
-      return (await res.json()) as T;
+      return await res.json();
     } catch (err) {
       // Don't retry or log aborted requests (React strict mode double-mount)
       if ((err as Error).name === 'AbortError') throw err;
@@ -41,18 +47,18 @@ async function fetchWithRetry<T>(url: string, signal?: AbortSignal): Promise<T> 
 }
 
 export async function fetchFacilities(signal?: AbortSignal): Promise<EdasFacility[]> {
-  return fetchWithRetry<EdasFacility[]>(`${BASE_URL}/cachedfacilities`, signal);
+  const raw = await fetchWithRetry(`${BASE_URL}/cachedfacilities`, signal);
+  return parseEdas(EdasFacilitiesResponseSchema, raw, 'cachedfacilities');
 }
 
 export async function fetchHospitalStatus(
   signal?: AbortSignal,
 ): Promise<EdasHospitalStatusEnvelope> {
-  return fetchWithRetry<EdasHospitalStatusEnvelope>(
-    `${BASE_URL}/cachedhospitalstatus`,
-    signal,
-  );
+  const raw = await fetchWithRetry(`${BASE_URL}/cachedhospitalstatus`, signal);
+  return parseEdas(EdasHospitalStatusEnvelopeSchema, raw, 'cachedhospitalstatus');
 }
 
 export async function fetchJurisdictions(signal?: AbortSignal): Promise<EdasJurisdiction[]> {
-  return fetchWithRetry<EdasJurisdiction[]>(`${BASE_URL}/cachedjurisdictions`, signal);
+  const raw = await fetchWithRetry(`${BASE_URL}/cachedjurisdictions`, signal);
+  return parseEdas(EdasJurisdictionsResponseSchema, raw, 'cachedjurisdictions');
 }
