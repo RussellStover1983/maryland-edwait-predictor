@@ -1,23 +1,18 @@
 """Extract EDAS hospital snapshots from Railway Postgres into a local Parquet file."""
 
-import os
 import sys
-from pathlib import Path
 
 import pandas as pd
 import psycopg2
-from dotenv import load_dotenv
 
-# Load .env from expresscare-dashboard root
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(ENV_PATH)
+from config import settings
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = settings.database_url
 if not DATABASE_URL:
-    print("ERROR: DATABASE_URL not found in", ENV_PATH)
+    print("ERROR: DATABASE_URL not set (checked ../.env and process env)")
     sys.exit(1)
 
-OUTPUT_PATH = Path(__file__).resolve().parent / "artifacts" / "edas_snapshots.parquet"
+OUTPUT_PATH = settings.model_artifacts_dir / "edas_snapshots.parquet"
 OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 

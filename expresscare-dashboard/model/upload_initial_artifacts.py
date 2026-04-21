@@ -6,13 +6,12 @@ model files so there's a baseline before the weekly cron runs.
 
 import json
 import math
-import os
 import sys
-from pathlib import Path
 
 import pandas as pd
 import psycopg2
-from dotenv import load_dotenv
+
+from config import settings
 
 
 def sanitize_nans(obj):
@@ -27,18 +26,14 @@ def sanitize_nans(obj):
         return [sanitize_nans(v) for v in obj]
     return obj
 
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(ENV_PATH)
-
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = settings.database_url
 if not DATABASE_URL:
-    print("ERROR: DATABASE_URL not found in", ENV_PATH)
+    print("ERROR: DATABASE_URL not set (checked ../.env and process env)")
     sys.exit(1)
 
 CONN_STR = DATABASE_URL.replace("?sslmode=require", "")
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
-SCRIPTS_DATA = Path(__file__).resolve().parent.parent / "scripts" / "data"
+ARTIFACTS = settings.model_artifacts_dir
 
 
 def store_artifact(cur, conn, key: str, data, metadata: dict = None):
@@ -94,7 +89,7 @@ def main():
         print(f"  WARNING: {hscrc_path} not found, skipping hscrc_baselines")
 
     # Flu history from scripts/data/
-    flu_path = SCRIPTS_DATA / "flu-history.json"
+    flu_path = settings.flu_data_path
     if flu_path.exists():
         with open(flu_path) as f:
             data = json.load(f)
@@ -104,7 +99,7 @@ def main():
         print(f"  WARNING: {flu_path} not found, skipping flu_history")
 
     # Weather history from scripts/data/
-    weather_path = SCRIPTS_DATA / "weather-history.json"
+    weather_path = settings.weather_data_path
     if weather_path.exists():
         with open(weather_path) as f:
             data = json.load(f)

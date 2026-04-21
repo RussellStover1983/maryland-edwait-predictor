@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pandas as pd
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+from config import settings
+
+ARTIFACTS = settings.model_artifacts_dir
 PUBLIC_MODEL = Path(__file__).resolve().parent.parent / "public" / "data" / "model"
 
 

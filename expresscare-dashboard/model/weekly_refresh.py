@@ -8,11 +8,9 @@ Designed to run as a Railway cron job. Requires:
 
 import json
 import math
-import os
 import sys
 import traceback
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import lightgbm as lgb
 import numpy as np
@@ -20,16 +18,9 @@ import pandas as pd
 import psycopg2
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-# Try loading .env for local runs; on Railway DATABASE_URL is set directly
-try:
-    from dotenv import load_dotenv
-    ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-    if ENV_PATH.exists():
-        load_dotenv(ENV_PATH)
-except ImportError:
-    pass
+from config import settings
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = settings.database_url
 if not DATABASE_URL:
     print("ERROR: DATABASE_URL not set")
     sys.exit(1)

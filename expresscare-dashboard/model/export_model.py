@@ -7,6 +7,8 @@ from pathlib import Path
 
 import lightgbm as lgb
 
+from config import settings
+
 
 def sanitize_nans(obj):
     """Replace NaN/Inf floats with null for valid JSON output.
@@ -24,7 +26,7 @@ def sanitize_nans(obj):
         return [sanitize_nans(v) for v in obj]
     return obj
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+ARTIFACTS = settings.model_artifacts_dir
 PUBLIC_MODEL = Path(__file__).resolve().parent.parent / "public" / "data" / "model"
 
 

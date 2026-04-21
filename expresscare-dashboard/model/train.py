@@ -12,7 +12,9 @@ import pandas as pd
 import shap
 from sklearn.metrics import mean_absolute_error, mean_squared_error, confusion_matrix
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+from config import settings
+
+ARTIFACTS = settings.model_artifacts_dir
 
 PARAMS = {
     "objective": "regression",
