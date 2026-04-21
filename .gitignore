@@ -8,6 +8,9 @@ phase2-run.log
 .env.local
 .env.*.local
 
+# Raw HSCRC Excel drops — canonical copy lives at C:/dev/shared/data/hscrc/
+volume-training-data/
+
 # OS
 .DS_Store
 Thumbs.db

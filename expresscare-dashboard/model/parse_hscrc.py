@@ -19,7 +19,10 @@ import pandas as pd
 
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
-HSCRC_DIR = Path(__file__).resolve().parent.parent / "scripts" / "data" / "hscrc"
+# TODO: move path to config.settings
+_SHARED_HSCRC = Path("C:/dev/shared/data/hscrc")
+_LOCAL_HSCRC = Path(__file__).resolve().parent.parent / "scripts" / "data" / "hscrc"
+HSCRC_DIR = _SHARED_HSCRC if _SHARED_HSCRC.exists() else _LOCAL_HSCRC
 ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 
