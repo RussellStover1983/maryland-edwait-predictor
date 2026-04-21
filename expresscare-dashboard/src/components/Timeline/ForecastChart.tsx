@@ -22,6 +22,7 @@ export default function ForecastChart({ hospitals }: Props) {
   const hospital = hospitals.find((h) => h.code === selectedHospital);
 
   const [chartData, setChartData] = useState<ChartPoint[] | null>(null);
+  const [forecastError, setForecastError] = useState<string | null>(null);
   const [modelLabel, setModelLabel] = useState<string>('LOADING...');
 
   // Load model metadata once
@@ -30,7 +31,7 @@ export default function ForecastChart({ hospitals }: Props) {
       if (meta.loaded) {
         setModelLabel(`LightGBM ${meta.treeCount}T | MAE: ${meta.mae1h?.toFixed(2) ?? '?'}`);
       } else {
-        setModelLabel('PLACEHOLDER MODEL');
+        setModelLabel('MODEL UNAVAILABLE');
       }
     });
   }, []);
@@ -39,12 +40,15 @@ export default function ForecastChart({ hospitals }: Props) {
   useEffect(() => {
     if (!hospital) {
       setChartData(null);
+      setForecastError(null);
       return;
     }
 
     const currentScore = hospital.edCensusScore ?? 2;
     const currentHour = new Date().getHours();
 
+    let cancelled = false;
+    setForecastError(null);
     forecast(currentScore, currentHour, hospital.code, {
       numUnits: hospital.numUnits ?? 0,
       numUnitsEnroute: hospital.numUnitsEnroute ?? 0,
@@ -53,29 +57,57 @@ export default function ForecastChart({ hospitals }: Props) {
       alertYellow: !!hospital.alerts?.yellow,
       alertRed: !!hospital.alerts?.red,
       alertReroute: !!hospital.alerts?.reroute,
-    }).then((result) => {
-      const points: ChartPoint[] = result.p50.map((p50, i) => {
-        const hoursAhead = i * 0.5;
-        const time = new Date();
-        time.setMinutes(time.getMinutes() + hoursAhead * 60);
+    })
+      .then((result) => {
+        if (cancelled) return;
+        const points: ChartPoint[] = result.p50.map((p50, i) => {
+          const hoursAhead = i * 0.5;
+          const time = new Date();
+          time.setMinutes(time.getMinutes() + hoursAhead * 60);
 
-        return {
-          time: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-          hoursAhead,
-          p10: result.p10[i],
-          p50,
-          p90: result.p90[i],
-          isCurrent: i === 0,
-        };
+          return {
+            time: time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+            hoursAhead,
+            p10: result.p10[i],
+            p50,
+            p90: result.p90[i],
+            isCurrent: i === 0,
+          };
+        });
+        setChartData(points);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        console.error('[ForecastChart] forecast failed:', err);
+        setChartData(null);
+        setForecastError(err instanceof Error ? err.message : String(err));
       });
-      setChartData(points);
-    });
+    return () => {
+      cancelled = true;
+    };
   }, [hospital]);
 
-  if (!hospital || !chartData) {
+  if (!hospital) {
     return (
       <div className="h-full flex items-center justify-center text-text-muted text-[12px]">
         Select a hospital to view forecast
+      </div>
+    );
+  }
+
+  if (forecastError) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-text-muted text-[12px] gap-1">
+        <div className="text-census-4 font-bold">Forecast unavailable</div>
+        <div className="text-[10px] text-text-muted">{forecastError}</div>
+      </div>
+    );
+  }
+
+  if (!chartData) {
+    return (
+      <div className="h-full flex items-center justify-center text-text-muted text-[12px]">
+        Loading forecast…
       </div>
     );
   }

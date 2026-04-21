@@ -1,5 +1,28 @@
-// PLACEHOLDER FORECAST — not the real model. Replaced in Phase 2 by LightGBM
-// trained per ED_PREDICTIVE_MODELING_RESEARCH.md. Do not ship to production.
+/* ============================================================================
+ *  ⚠  PLACEHOLDER FORECAST — NOT THE REAL MODEL  ⚠
+ * ----------------------------------------------------------------------------
+ *  This file is a hand-crafted fake used only for local development when the
+ *  LightGBM artifacts have not yet been exported. It is NOT a fallback for
+ *  production: fabricating a forecast out of an exponential decay toward a
+ *  flat 2.0 baseline would violate the project rule "If a source is missing,
+ *  surface 'unavailable' in the UI rather than estimating" (see CLAUDE.md).
+ *
+ *  This module MUST NEVER be reached by the production bundle. It is only
+ *  imported by src/services/predictor.ts via a dynamic `import()` guarded by
+ *  the VITE_USE_PLACEHOLDER_MODEL feature flag. To enable it in dev:
+ *
+ *      # .env.local
+ *      VITE_USE_PLACEHOLDER_MODEL=true
+ *
+ *  With the flag unset (the default), this file is unreachable via the
+ *  static import graph and the production predictor throws a
+ *  "forecast unavailable" error if the real model fails to load.
+ *
+ *  Do not add a static `import` of this module anywhere. Do not remove the
+ *  feature-flag guard. Do not delete this file — it is useful for dev — but
+ *  keep it fenced off from production.
+ * ==========================================================================*/
+
 
 let warned = false;
 

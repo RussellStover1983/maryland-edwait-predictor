@@ -2,10 +2,14 @@
  * Browser-side LightGBM inference for ED census score prediction.
  *
  * Loads the exported JSON model and runs tree evaluation in the browser.
- * Falls back to the placeholder forecast if model files fail to load.
+ * If model artifacts fail to load, callers must surface a "forecast unavailable"
+ * state. The placeholder forecast is ONLY used when the dev-only
+ * VITE_USE_PLACEHOLDER_MODEL flag is explicitly set to 'true'; see
+ * predictor-placeholder.ts for details.
  */
 
-import { placeholderForecast, getHospitalBaseline as getPlaceholderBaseline } from './predictor-placeholder';
+const USE_PLACEHOLDER =
+  import.meta.env.VITE_USE_PLACEHOLDER_MODEL === 'true';
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -42,6 +46,7 @@ let config: InferenceConfig | null = null;
 let baselines: Record<string, number[]> | null = null;
 let loadAttempted = false;
 let loadFailed = false;
+let loadError: Error | null = null;
 
 // ── Tree evaluation ────────────────────────────────────────────────
 
@@ -104,8 +109,9 @@ async function loadModel(): Promise<boolean> {
     console.log(`[predictor] LightGBM model loaded: ${model1h!.tree_info.length} trees, MAE=${config!.test_mae_1h}`);
     return true;
   } catch (err) {
-    console.warn('[predictor] Failed to load LightGBM model, using placeholder:', err);
+    console.error('[predictor] Failed to load LightGBM model:', err);
     loadFailed = true;
+    loadError = err instanceof Error ? err : new Error(String(err));
     return false;
   }
 }
@@ -226,12 +232,23 @@ export async function forecast(
   const loaded = await loadModel();
 
   if (!loaded || !model1h || !config) {
-    // Fallback to placeholder
-    const baseline = getPlaceholderBaseline(hospitalCode);
-    return placeholderForecast(currentScore, hour, baseline);
+    if (USE_PLACEHOLDER) {
+      // Dev-only escape hatch: VITE_USE_PLACEHOLDER_MODEL=true must be explicitly set.
+      const { placeholderForecast, getHospitalBaseline: getPlaceholderBaseline } =
+        await import('./predictor-placeholder');
+      const baseline = getPlaceholderBaseline(hospitalCode);
+      return placeholderForecast(currentScore, hour, baseline);
+    }
+    throw loadError ?? new Error('Forecast unavailable: LightGBM model failed to load');
   }
 
-  const mae = config.test_mae_1h ?? 0.5;
+  if (config.test_mae_1h == null) {
+    // Missing MAE indicates a corrupted/partial config export — do not substitute a guess.
+    throw new Error(
+      'Forecast unavailable: inference_config.test_mae_1h is missing — model config is broken',
+    );
+  }
+  const mae = config.test_mae_1h;
   const steps = 48; // 30-min steps over 24 hours
   const p10: number[] = [];
   const p50: number[] = [];
