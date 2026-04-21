@@ -11,8 +11,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
-SCRIPTS_DATA = Path(__file__).resolve().parent.parent / "scripts" / "data"
+from config import settings
+from validate_inputs import validate_edas_snapshots
+
+ARTIFACTS = settings.model_artifacts_dir
+WEATHER_PATH = settings.weather_data_path
+FLU_PATH = settings.flu_data_path
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -25,7 +29,7 @@ def epiweek_from_date(dt):
 
 def load_weather() -> pd.DataFrame:
     """Load weather history and return a DataFrame indexed by hourly timestamp."""
-    path = SCRIPTS_DATA / "weather-history.json"
+    path = WEATHER_PATH
     if not path.exists():
         print("WARNING: weather-history.json not found")
         return pd.DataFrame()
@@ -45,7 +49,7 @@ def load_weather() -> pd.DataFrame:
 
 def load_flu() -> pd.DataFrame:
     """Load flu/ILI data and return DataFrame with epiweek and ili_rate."""
-    path = SCRIPTS_DATA / "flu-history.json"
+    path = FLU_PATH
     if not path.exists():
         print("WARNING: flu-history.json not found")
         return pd.DataFrame()
@@ -81,6 +85,10 @@ def build_features():
     # Ensure timestamp is datetime UTC, sorted
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df = df.sort_values(["hospital_code", "timestamp"]).reset_index(drop=True)
+
+    # Validate EDAS snapshots before feature engineering. Bad rows must bubble
+    # up — we don't silently drop them.
+    df = validate_edas_snapshots(df)
 
     # ── Group 1: Current ED state ───────────────────────────────────
     df["min_stay_minutes"] = df["min_stay_minutes"].fillna(0)

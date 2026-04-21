@@ -17,11 +17,30 @@ import numpy as np
 import openpyxl
 import pandas as pd
 
+from config import settings
+from validate_inputs import validate_hscrc_df
+
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 
-HSCRC_DIR = Path(__file__).resolve().parent.parent / "scripts" / "data" / "hscrc"
-ARTIFACTS = Path(__file__).resolve().parent / "artifacts"
+# Primary HSCRC dir is the shared dataset; fall back to the per-project
+# scripts/data copy when the shared dir is empty or absent. This preserves
+# backward compatibility with the pre-refactor behavior that only looked at
+# expresscare-dashboard/scripts/data/hscrc.
+HSCRC_DIR = settings.hscrc_data_dir
+HSCRC_FALLBACK_DIR = settings.hscrc_fallback_dir
+ARTIFACTS = settings.model_artifacts_dir
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
+
+
+def _find_hscrc_files() -> list[Path]:
+    """Return xlsx files from the primary HSCRC dir, or the fallback."""
+    for candidate in (HSCRC_DIR, HSCRC_FALLBACK_DIR):
+        if candidate.exists():
+            files = sorted(candidate.glob("*.xlsx"))
+            files = [f for f in files if "datadictionary" not in f.name.lower()]
+            if files:
+                return files
+    return []
 
 # HSCRC HOSP_NUM to EDAS destinationCode mapping
 # Verified against FY2026 HSCRC data and EDAS hospital status feed
@@ -155,12 +174,10 @@ def parse_single_file(filepath: Path) -> pd.DataFrame:
 
 
 def main():
-    xlsx_files = sorted(HSCRC_DIR.glob("*.xlsx")) if HSCRC_DIR.exists() else []
-    # Exclude data dictionary files
-    xlsx_files = [f for f in xlsx_files if "datadictionary" not in f.name.lower()]
+    xlsx_files = _find_hscrc_files()
 
     if not xlsx_files:
-        print(f"WARNING: No HSCRC Excel files found in {HSCRC_DIR}")
+        print(f"WARNING: No HSCRC Excel files found in {HSCRC_DIR} or {HSCRC_FALLBACK_DIR}")
         print("Writing empty baselines file with correct schema.")
         empty_baselines = pd.DataFrame(columns=BASELINES_COLS)
         empty_baselines.to_parquet(ARTIFACTS / "hscrc_baselines.parquet", index=False)
@@ -242,6 +259,10 @@ def main():
                 ed[col] = pd.to_numeric(ed[col], errors="coerce")
             except Exception:
                 ed[col] = ed[col].astype(str)
+
+    # Validate the finalized HSCRC frame before persistence. This will raise
+    # if any required column is missing or VOL_IN / VOL_OUT go negative.
+    ed = validate_hscrc_df(ed)
 
     # Save full dataset (all months including COVID)
     ed.to_parquet(ARTIFACTS / "hscrc_all_months.parquet", index=False)
