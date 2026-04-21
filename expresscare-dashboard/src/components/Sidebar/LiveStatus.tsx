@@ -8,6 +8,8 @@ const CENSUS_COLORS: Record<number, string> = {
   4: '#ef4444',
 };
 
+const UNKNOWN_COLOR = '#9ca3af';
+
 interface Props {
   hospitals: NormalizedHospital[];
   previousHospitals: NormalizedHospital[];
@@ -27,16 +29,24 @@ function getTrend(
 export default function LiveStatus({ hospitals, previousHospitals }: Props) {
   const selectHospital = useDashboardStore((s) => s.selectHospital);
 
-  const sorted = [...hospitals].sort(
-    (a, b) => (b.edCensusScore ?? 0) - (a.edCensusScore ?? 0),
-  );
+  const sorted = [...hospitals].sort((a, b) => {
+    // Hospitals with missing scores sort to the end — they are unknown, not zero.
+    const aMissing = a.edCensusScore == null;
+    const bMissing = b.edCensusScore == null;
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return b.edCensusScore! - a.edCensusScore!;
+  });
 
   return (
     <section>
       <div className="section-label mb-2">Live ED Status</div>
       <div className="space-y-1 max-h-[300px] overflow-y-auto">
         {sorted.map((h) => {
-          const color = CENSUS_COLORS[h.edCensusScore ?? 0] || '#6b7280';
+          const color = h.edCensusScore == null
+            ? UNKNOWN_COLOR
+            : CENSUS_COLORS[h.edCensusScore] ?? UNKNOWN_COLOR;
           const trend = getTrend(h, previousHospitals);
 
           return (

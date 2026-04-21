@@ -1,4 +1,4 @@
-import { CircleMarker, Popup } from 'react-leaflet';
+import { CircleMarker, Popup, Tooltip } from 'react-leaflet';
 import type { NormalizedHospital } from '../../types/edas';
 
 const CENSUS_COLORS: Record<number, string> = {
@@ -7,6 +7,8 @@ const CENSUS_COLORS: Record<number, string> = {
   3: '#f97316',
   4: '#ef4444',
 };
+
+const UNKNOWN_COLOR = '#9ca3af';
 
 const CENSUS_LABELS: Record<number, string> = {
   1: 'Normal (0-75%)',
@@ -32,7 +34,10 @@ export default function HospitalMarkers({ hospitals, onSelect }: Props) {
   return (
     <>
       {hospitals.map((h) => {
-        const censusColor = CENSUS_COLORS[h.edCensusScore ?? 0] || '#6b7280';
+        const scoreMissing = h.edCensusScore == null;
+        const censusColor = scoreMissing
+          ? UNKNOWN_COLOR
+          : CENSUS_COLORS[h.edCensusScore!] ?? UNKNOWN_COLOR;
         const radius = 8 + 2 * h.numUnits;
 
         return (
@@ -51,6 +56,11 @@ export default function HospitalMarkers({ hospitals, onSelect }: Props) {
               click: () => onSelect(h.code),
             }}
           >
+            {scoreMissing && (
+              <Tooltip direction="top" offset={[0, -4]} opacity={0.9}>
+                Census status unavailable
+              </Tooltip>
+            )}
             <Popup>
               <div className="min-w-[200px]">
                 <div className="font-bold text-[13px]">{h.name}</div>
@@ -61,7 +71,9 @@ export default function HospitalMarkers({ hospitals, onSelect }: Props) {
                   <div>
                     Census:{' '}
                     <span style={{ color: censusColor }}>
-                      {h.edCensusScore ?? '—'} {h.edCensusScore ? CENSUS_LABELS[h.edCensusScore] : ''}
+                      {scoreMissing
+                        ? 'unavailable'
+                        : `${h.edCensusScore} ${CENSUS_LABELS[h.edCensusScore!] ?? ''}`}
                     </span>
                   </div>
                   <div>EMS Units: {h.numUnits} (enroute: {h.numUnitsEnroute})</div>

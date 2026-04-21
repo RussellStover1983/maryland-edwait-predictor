@@ -53,8 +53,18 @@ export default function LocationDetail({ locations, hospitals }: Props) {
 
   if (!location) return null;
 
-  // Compute catchment stats
-  const catchmentPop = nearbyData?.reduce((s, t) => s + (t.total_population ?? 0), 0) ?? 0;
+  // Compute catchment stats. Distinguish "no nearby tracts available" from "real zero":
+  // if nearbyData itself is missing/empty, the catchment population is unavailable, not zero.
+  // For individual tracts with a null total_population, skip them and report the skipped count.
+  const hasNearby = nearbyData != null && nearbyData.length > 0;
+  const tractsWithPop = hasNearby
+    ? nearbyData!.filter((t) => t.total_population != null)
+    : [];
+  const skippedPopTracts = hasNearby ? nearbyData!.length - tractsWithPop.length : 0;
+  const catchmentPop = hasNearby && tractsWithPop.length > 0
+    ? tractsWithPop.reduce((s, t) => s + (t.total_population ?? 0), 0)
+    : null;
+
   const avgUninsured = nearbyData && nearbyData.length > 0
     ? nearbyData.reduce((s, t) => s + (t.uninsured_rate ?? 0), 0) / nearbyData.length
     : null;
@@ -98,12 +108,22 @@ export default function LocationDetail({ locations, hospitals }: Props) {
         {nearbyData === null ? (
           <div className="text-[11px] text-text-muted">Loading catchment data…</div>
         ) : (
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <MiniStat label="Catchment Pop" value={catchmentPop.toLocaleString()} />
-            <MiniStat label="Uninsured %" value={avgUninsured != null ? `${avgUninsured.toFixed(1)}%` : '—'} />
-            <MiniStat label="Diabetes %" value={avgDiabetes != null ? `${avgDiabetes.toFixed(1)}%` : '—'} />
-            <MiniStat label="Mean SVI" value={avgSVI != null ? avgSVI.toFixed(2) : '—'} />
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <MiniStat
+                label="Catchment Pop"
+                value={catchmentPop != null ? catchmentPop.toLocaleString() : 'unavailable'}
+              />
+              <MiniStat label="Uninsured %" value={avgUninsured != null ? `${avgUninsured.toFixed(1)}%` : '—'} />
+              <MiniStat label="Diabetes %" value={avgDiabetes != null ? `${avgDiabetes.toFixed(1)}%` : '—'} />
+              <MiniStat label="Mean SVI" value={avgSVI != null ? avgSVI.toFixed(2) : '—'} />
+            </div>
+            {skippedPopTracts > 0 && (
+              <div className="text-[9px] text-text-muted mt-1">
+                {skippedPopTracts} tract{skippedPopTracts === 1 ? '' : 's'} skipped (missing population)
+              </div>
+            )}
+          </>
         )}
 
         {nearestHosp && (
