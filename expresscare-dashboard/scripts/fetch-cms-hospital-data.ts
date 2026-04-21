@@ -84,6 +84,7 @@ async function main(): Promise<void> {
 
   // If local data insufficient, fall back to CMS API
   if (hospitalRows.length === 0) {
+    console.warn(`[cms] shared/data/cms/ missing or empty — falling back to live CMS API. Data provenance: live fetch, not cached.`);
     console.log(`[cms] Local hospital data insufficient, fetching from CMS API...`);
     const data = await fetchWithRetry<CmsApiResponse>(
       'https://data.cms.gov/provider-data/api/1/datastore/query/xubh-q36u/0?conditions[0][property]=state&conditions[0][value]=MD&limit=500'
