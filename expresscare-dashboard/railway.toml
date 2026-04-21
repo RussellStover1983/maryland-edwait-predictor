@@ -1,2 +1,6 @@
 [build]
 dockerfilePath = "Dockerfile.collector"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

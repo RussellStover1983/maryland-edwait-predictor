@@ -9,13 +9,18 @@ const USER_AGENT = process.env.COLLECTOR_USER_AGENT || 'expresscare-dashboard-co
 const DB_PATH = resolve(import.meta.dirname, 'data', 'edas-history.db');
 const ONCE = process.argv.includes('--once');
 
+const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 30_000);
+
 async function fetchWithRetry<T>(url: string): Promise<T> {
   const maxAttempts = 3;
   const baseDelay = 500;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const start = Date.now();
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
       const latency = Date.now() - start;
       console.log(`[collector] ${res.status} ${url} (${latency}ms, attempt ${attempt})`);
       if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);

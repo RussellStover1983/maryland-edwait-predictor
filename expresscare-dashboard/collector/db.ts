@@ -107,10 +107,18 @@ const DEFAULT_SQLITE_PATH = 'collector/data/edas-history.db';
 
 // ── Postgres backend ────────────────────────────────────────────────
 
+let _pgPool: pg.Pool | null = null;
+let _pgSchemaInit = false;
+
 async function openPostgres(dbUrl: string): Promise<DbHandle> {
-  const pool = new pg.Pool({ connectionString: dbUrl, max: 2 });
-  await pool.query(PG_SCHEMA);
-  return { backend: 'postgres', _pg: pool };
+  if (!_pgPool) {
+    _pgPool = new pg.Pool({ connectionString: dbUrl, max: 2 });
+  }
+  if (!_pgSchemaInit) {
+    await _pgPool.query(PG_SCHEMA);
+    _pgSchemaInit = true;
+  }
+  return { backend: 'postgres', _pg: _pgPool };
 }
 
 // ── SQLite backend ──────────────────────────────────────────────────
@@ -212,8 +220,7 @@ export async function queryScalar(handle: DbHandle, sql: string): Promise<number
 
 export async function closeDb(handle: DbHandle): Promise<void> {
   if (handle.backend === 'postgres') {
-    await handle._pg!.end();
-  } else {
-    handle._sqlite!.close();
+    return;
   }
+  handle._sqlite!.close();
 }
