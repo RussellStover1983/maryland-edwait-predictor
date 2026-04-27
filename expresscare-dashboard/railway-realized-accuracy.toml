@@ -1,0 +1,6 @@
+[build]
+dockerfilePath = "Dockerfile.realized_accuracy"
+
+[deploy]
+cronSchedule = "0 * * * *"
+restartPolicyType = "NEVER"
