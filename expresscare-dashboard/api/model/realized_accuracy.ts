@@ -16,7 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const db = getPool();
 
-    const params: (string | null)[] = [hospitalCode];
+    const params: string[] = hospitalCode ? [hospitalCode] : [];
     const hospitalFilter = hospitalCode ? 'AND hospital_code = $1' : '';
 
     const overall = await db.query(
