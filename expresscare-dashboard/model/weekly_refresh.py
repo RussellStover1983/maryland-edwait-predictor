@@ -20,6 +20,12 @@ import pandas as pd
 import psycopg2
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+from feature_engineering import (
+    FEATURE_COLS as SHARED_FEATURE_COLS,
+    build_features as shared_build_features,
+    epiweek_from_date as shared_epiweek_from_date,
+)
+
 # Try loading .env for local runs; on Railway DATABASE_URL is set directly
 try:
     from dotenv import load_dotenv
@@ -54,28 +60,7 @@ PARAMS = {
 NUM_ROUNDS = 1000
 EARLY_STOPPING = 50
 
-FEATURE_COLS = [
-    # Group 1: Current ED state
-    "ed_census_score", "num_units", "num_units_enroute",
-    "min_stay_minutes", "max_stay_minutes", "any_alert", "alert_count",
-    # Group 2: Lag features
-    "census_lag_1h", "census_lag_2h", "census_lag_4h", "census_lag_8h", "census_lag_24h",
-    "census_rolling_3h", "census_rolling_6h", "census_rolling_12h",
-    "census_rolling_std_3h", "census_change_2h",
-    "units_rolling_3h", "max_stay_rolling_3h",
-    # Group 3: Temporal
-    "hour_sin", "hour_cos", "dow_sin", "dow_cos", "month_sin", "month_cos",
-    "is_weekend", "hour_linear",
-    # Group 4: Weather
-    "temperature_2m", "precipitation", "relative_humidity_2m",
-    # Group 5: Flu
-    "ili_rate", "ili_weeks_stale",
-    # Group 6: Hospital identity
-    "hospital_code_encoded",
-    # Group 7: HSCRC baselines
-    "baseline_monthly_volume", "baseline_monthly_visits",
-    "baseline_admit_rate", "seasonal_index", "licensed_beds",
-]
+FEATURE_COLS = SHARED_FEATURE_COLS
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -95,14 +80,111 @@ def sanitize_nans(obj):
     return obj
 
 
-def epiweek_from_date(dt):
-    """Convert a datetime to CDC epiweek (YYYYWW). Simple ISO-week approximation."""
-    iso = dt.isocalendar()
-    return iso[0] * 100 + iso[1]
+epiweek_from_date = shared_epiweek_from_date
 
 
 def get_connection():
     return psycopg2.connect(CONN_STR)
+
+
+TRAINING_HISTORY_DDL = """
+CREATE TABLE IF NOT EXISTS training_history (
+  id              SERIAL PRIMARY KEY,
+  trained_at      TIMESTAMPTZ NOT NULL,
+  trigger         TEXT NOT NULL,
+  train_rows      INTEGER NOT NULL,
+  test_rows       INTEGER NOT NULL,
+  feature_count   INTEGER NOT NULL,
+  mae_1h          DOUBLE PRECISION,
+  rmse_1h         DOUBLE PRECISION,
+  best_iter_1h    INTEGER,
+  mae_4h          DOUBLE PRECISION,
+  rmse_4h         DOUBLE PRECISION,
+  best_iter_4h    INTEGER,
+  train_date_min  TIMESTAMPTZ,
+  train_date_max  TIMESTAMPTZ,
+  test_date_min   TIMESTAMPTZ,
+  test_date_max   TIMESTAMPTZ,
+  hospital_count  INTEGER,
+  duration_seconds DOUBLE PRECISION,
+  notes           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_history_trained_at
+  ON training_history(trained_at DESC);
+"""
+
+
+def ensure_training_history_table(conn):
+    """Idempotently create the training_history table."""
+    cur = conn.cursor()
+    cur.execute(TRAINING_HISTORY_DDL)
+    conn.commit()
+    cur.close()
+
+
+def detect_trigger_source() -> str:
+    """Identify whether this run was driven by cron or a manual trigger."""
+    explicit = os.getenv("TRIGGER_SOURCE")
+    if explicit:
+        return explicit
+    # Railway sets various RAILWAY_* env vars; the cron-specific flag isn't reliably
+    # documented, so we fall back to the deployment ID being present plus an
+    # interactive TTY check. A scheduled cron run has no TTY.
+    if os.getenv("RAILWAY_DEPLOYMENT_ID") and not sys.stdin.isatty():
+        return "cron"
+    if not sys.stdin.isatty():
+        return "cron"
+    return "manual"
+
+
+def record_training_history(conn, training_meta: dict, trigger: str,
+                            duration_seconds: float, hospital_count: int,
+                            notes: str = None) -> None:
+    """Insert one row into training_history; failures are logged, not fatal."""
+    try:
+        ensure_training_history_table(conn)
+
+        models = training_meta.get("models", {})
+        m1 = models.get("1h", {}) or {}
+        m4 = models.get("4h", {}) or {}
+
+        train_range = training_meta.get("train_date_range") or [None, None]
+        test_range = training_meta.get("test_date_range") or [None, None]
+
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO training_history (
+                trained_at, trigger, train_rows, test_rows, feature_count,
+                mae_1h, rmse_1h, best_iter_1h,
+                mae_4h, rmse_4h, best_iter_4h,
+                train_date_min, train_date_max, test_date_min, test_date_max,
+                hospital_count, duration_seconds, notes
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, [
+            training_meta.get("trained_at"),
+            trigger,
+            int(training_meta.get("train_rows", 0)),
+            int(training_meta.get("test_rows", 0)),
+            int(training_meta.get("feature_count", 0)),
+            m1.get("mae"), m1.get("rmse"), m1.get("best_iteration"),
+            m4.get("mae"), m4.get("rmse"), m4.get("best_iteration"),
+            train_range[0], train_range[1],
+            test_range[0], test_range[1],
+            hospital_count,
+            duration_seconds,
+            notes,
+        ])
+        conn.commit()
+        cur.close()
+        print(f"  Logged training_history row (trigger={trigger}, duration={duration_seconds:.1f}s)")
+    except Exception as exc:
+        print(f"  WARNING: failed to record training_history: {exc}")
+        traceback.print_exc()
+        try:
+            conn.rollback()
+        except Exception:
+            pass
 
 
 def store_artifact(conn, key: str, data, metadata: dict = None):
@@ -337,236 +419,15 @@ def load_hscrc_baselines(conn) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════
 
 def build_features(edas_df: pd.DataFrame, flu_data: dict, weather_data: dict,
-                   hscrc_df: pd.DataFrame) -> pd.DataFrame:
-    """Feature engineering pipeline — same as features.py but from in-memory data."""
+                   hscrc_df: pd.DataFrame) -> tuple:
+    """Training-mode wrapper around the shared feature pipeline."""
     print("\n" + "=" * 60)
     print("  STEP E: Building features")
     print("=" * 60)
-
-    df = edas_df.copy()
-    df = df.sort_values(["hospital_code", "timestamp"]).reset_index(drop=True)
-
-    # ── Group 1: Current ED state ───────────────────────────────────
-    df["min_stay_minutes"] = df["min_stay_minutes"].fillna(0)
-    df["max_stay_minutes"] = df["max_stay_minutes"].fillna(0)
-
-    alert_cols = ["alert_yellow", "alert_red", "alert_reroute", "alert_code_black", "alert_trauma_bypass"]
-    existing_alert_cols = [c for c in alert_cols if c in df.columns]
-    if existing_alert_cols:
-        df["any_alert"] = df[existing_alert_cols].max(axis=1)
-        df["alert_count"] = df[existing_alert_cols].sum(axis=1)
-    else:
-        df["any_alert"] = 0
-        df["alert_count"] = 0
-
-    # ── Group 2: Lag and rolling features ───────────────────────────
-    print("  Computing lag and rolling features...")
-    df["ts_round"] = df["timestamp"].dt.round("5min")
-
-    lag_offsets = {
-        "census_lag_1h": pd.Timedelta(hours=1),
-        "census_lag_2h": pd.Timedelta(hours=2),
-        "census_lag_4h": pd.Timedelta(hours=4),
-        "census_lag_8h": pd.Timedelta(hours=8),
-        "census_lag_24h": pd.Timedelta(hours=24),
-    }
-
-    # Build lookup: (hospital_code, rounded_ts) -> values
-    lookup = df.groupby(["hospital_code", "ts_round"]).agg(
-        census=("ed_census_score", "last"),
-        units=("num_units", "last"),
-        max_stay=("max_stay_minutes", "last"),
-    ).to_dict("index")
-
-    def get_lookup(hcode, ts, field="census"):
-        key = (hcode, ts)
-        if key in lookup:
-            return lookup[key][field]
-        for delta in [pd.Timedelta(minutes=5), pd.Timedelta(minutes=-5)]:
-            key2 = (hcode, ts + delta)
-            if key2 in lookup:
-                return lookup[key2][field]
-        return np.nan
-
-    for lag_name, offset in lag_offsets.items():
-        df[lag_name] = df.apply(
-            lambda row, _ln=lag_name, _off=offset: get_lookup(
-                row["hospital_code"], row["ts_round"] - _off
-            ), axis=1
-        )
-
-    # Rolling features
-    print("  Rolling features (3h, 6h, 12h)...")
-    rolling_results = []
-    for hcode, group in df.groupby("hospital_code"):
-        g = group.set_index("timestamp").sort_index()
-        census = g["ed_census_score"]
-        units = g["num_units"]
-        max_stay = g["max_stay_minutes"]
-
-        result = pd.DataFrame(index=g.index)
-        result["census_rolling_3h"] = census.rolling("3h", min_periods=1).mean()
-        result["census_rolling_6h"] = census.rolling("6h", min_periods=1).mean()
-        result["census_rolling_12h"] = census.rolling("12h", min_periods=1).mean()
-        result["census_rolling_std_3h"] = census.rolling("3h", min_periods=2).std()
-        result["units_rolling_3h"] = units.rolling("3h", min_periods=1).mean()
-        result["max_stay_rolling_3h"] = max_stay.rolling("3h", min_periods=1).mean()
-        rolling_results.append(result)
-
-    rolling_df = pd.concat(rolling_results)
-    df = df.set_index("timestamp")
-    for col in rolling_df.columns:
-        df[col] = rolling_df[col]
-    df = df.reset_index()
-
-    df["census_change_2h"] = df["ed_census_score"] - df["census_lag_2h"]
-
-    # Impute missing lag/rolling features
-    lag_rolling_cols = list(lag_offsets.keys()) + [
-        "census_rolling_3h", "census_rolling_6h", "census_rolling_12h",
-        "census_rolling_std_3h", "census_change_2h",
-        "units_rolling_3h", "max_stay_rolling_3h",
-    ]
-    hospital_means = df.groupby("hospital_code")[lag_rolling_cols].transform("mean")
-    for col in lag_rolling_cols:
-        df[col] = df[col].fillna(hospital_means[col])
-    for col in lag_rolling_cols:
-        df[col] = df[col].fillna(df[col].mean())
-
-    # ── Group 3: Temporal / calendar ────────────────────────────────
-    print("  Computing temporal features...")
-    hour = df["timestamp"].dt.hour + df["timestamp"].dt.minute / 60.0
-    dow = df["timestamp"].dt.dayofweek
-    month = df["timestamp"].dt.month
-
-    df["hour_sin"] = np.sin(2 * math.pi * hour / 24)
-    df["hour_cos"] = np.cos(2 * math.pi * hour / 24)
-    df["dow_sin"] = np.sin(2 * math.pi * dow / 7)
-    df["dow_cos"] = np.cos(2 * math.pi * dow / 7)
-    df["month_sin"] = np.sin(2 * math.pi * month / 12)
-    df["month_cos"] = np.cos(2 * math.pi * month / 12)
-    df["is_weekend"] = (dow >= 5).astype(int)
-    df["hour_linear"] = df["timestamp"].dt.hour
-
-    # ── Group 4: Weather (join by nearest hour) ─────────────────────
-    print("  Joining weather data...")
-    if weather_data and "hourly" in weather_data and len(weather_data["hourly"].get("time", [])) > 0:
-        hourly = weather_data["hourly"]
-        wdf = pd.DataFrame({
-            "weather_hour": pd.to_datetime(hourly["time"]).tz_localize("America/New_York", ambiguous="NaT", nonexistent="shift_forward").tz_convert("UTC"),
-            "temperature_2m": hourly["temperature_2m"],
-            "precipitation": hourly["precipitation"],
-            "relative_humidity_2m": hourly["relative_humidity_2m"],
-        })
-        # Drop any rows with NaT from ambiguous DST
-        wdf = wdf.dropna(subset=["weather_hour"])
-        df["weather_hour"] = df["timestamp"].dt.floor("h")
-        df = df.merge(wdf, on="weather_hour", how="left")
-        df.drop(columns=["weather_hour"], inplace=True)
-        print(f"    Matched {df['temperature_2m'].notna().sum():,} / {len(df):,} rows with weather")
-    else:
-        df["temperature_2m"] = np.nan
-        df["precipitation"] = np.nan
-        df["relative_humidity_2m"] = np.nan
-        print("    No weather data available")
-
-    # ── Group 5: Flu/ILI (join by epiweek) ──────────────────────────
-    print("  Joining flu data...")
-    if flu_data and "weeks" in flu_data and len(flu_data["weeks"]) > 0:
-        fdf = pd.DataFrame(flu_data["weeks"])
-        fdf = fdf[["epiweek", "ili"]].rename(columns={"ili": "ili_rate"})
-        df["epiweek"] = df["timestamp"].apply(epiweek_from_date)
-        max_flu_ew = int(fdf["epiweek"].max())
-        df = df.merge(fdf, on="epiweek", how="left")
-        df["ili_weeks_stale"] = (df["epiweek"] - max_flu_ew).clip(lower=0).astype(float)
-        stale_count = int((df["ili_weeks_stale"] > 0).sum())
-        if stale_count > 0:
-            print(f"    {stale_count} rows beyond flu data coverage")
-        df.drop(columns=["epiweek"], inplace=True)
-    else:
-        df["ili_rate"] = np.nan
-        df["ili_weeks_stale"] = np.nan
-        print("    No flu data available")
-
-    # ── Group 6: Hospital identity ──────────────────────────────────
-    print("  Encoding hospital codes...")
-    unique_codes = sorted(df["hospital_code"].unique())
-    label_map = {code: i for i, code in enumerate(unique_codes)}
-    df["hospital_code_encoded"] = df["hospital_code"].map(label_map)
-
-    # ── Group 7: HSCRC baselines (optional) ─────────────────────────
-    print("  Joining HSCRC baselines...")
-    if len(hscrc_df) > 0:
-        df["_month"] = df["timestamp"].dt.month
-        merge_cols = ["hospital_code", "month", "avg_monthly_volume", "avg_monthly_visits",
-                      "avg_admit_rate", "seasonal_index", "licensed_beds"]
-        available_cols = [c for c in merge_cols if c in hscrc_df.columns]
-        if "month" in available_cols:
-            hscrc_merge = hscrc_df[available_cols].rename(
-                columns={
-                    "month": "_month",
-                    "avg_monthly_volume": "baseline_monthly_volume",
-                    "avg_monthly_visits": "baseline_monthly_visits",
-                    "avg_admit_rate": "baseline_admit_rate",
-                }
-            )
-            df = df.merge(hscrc_merge, on=["hospital_code", "_month"], how="left")
-        df.drop(columns=["_month"], inplace=True, errors="ignore")
-
-    for col in ["baseline_monthly_volume", "baseline_monthly_visits",
-                "baseline_admit_rate", "seasonal_index", "licensed_beds"]:
-        if col not in df.columns:
-            df[col] = np.nan
-
-    # ── Target variables ────────────────────────────────────────────
-    print("  Computing target variables...")
-    targets_1h = []
-    targets_4h = []
-
-    for _, row in df.iterrows():
-        hcode = row["hospital_code"]
-        ts = row["ts_round"]
-
-        # 1h target
-        target_ts_1h = ts + pd.Timedelta(hours=1)
-        val_1h = np.nan
-        for delta in [pd.Timedelta(0), pd.Timedelta(minutes=5), pd.Timedelta(minutes=-5),
-                      pd.Timedelta(minutes=10), pd.Timedelta(minutes=-10)]:
-            key = (hcode, target_ts_1h + delta)
-            if key in lookup:
-                val_1h = lookup[key]["census"]
-                break
-        targets_1h.append(val_1h)
-
-        # 4h target
-        target_ts_4h = ts + pd.Timedelta(hours=4)
-        val_4h = np.nan
-        for delta in [pd.Timedelta(0), pd.Timedelta(minutes=5), pd.Timedelta(minutes=-5),
-                      pd.Timedelta(minutes=10), pd.Timedelta(minutes=-10)]:
-            key = (hcode, target_ts_4h + delta)
-            if key in lookup:
-                val_4h = lookup[key]["census"]
-                break
-        targets_4h.append(val_4h)
-
-    df["target_census_score_1h"] = targets_1h
-    df["target_census_score_4h"] = targets_4h
-
-    before = len(df)
-    df = df.dropna(subset=["target_census_score_1h"]).reset_index(drop=True)
-    dropped = before - len(df)
-    print(f"  Dropped {dropped:,} rows without 1h target")
-
-    # Clean up temp columns
-    df.drop(columns=["ts_round"], inplace=True, errors="ignore")
-
-    # Only keep features that exist
-    actual_features = [c for c in FEATURE_COLS if c in df.columns]
-
-    print(f"\n  Feature matrix: {len(df):,} rows x {len(actual_features)} features")
-    print(f"  Date range: {df['timestamp'].min()} to {df['timestamp'].max()}")
-
-    return df, actual_features, label_map
+    return shared_build_features(
+        edas_df, flu_data, weather_data, hscrc_df,
+        compute_targets=True, label_map=None, verbose=True,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -712,14 +573,18 @@ def store_all_artifacts(conn, booster_1h, booster_4h, training_meta, label_map,
     print("  STEP H: Storing artifacts in Postgres")
     print("=" * 60)
 
-    # 1h model JSON
+    # 1h model JSON (browser-side inference) + TEXT (Python reload for realized_accuracy)
     model_json_1h = sanitize_nans(booster_1h.dump_model())
     store_artifact(conn, "lgbm_1h", model_json_1h, {"horizon": "1h"})
+    store_artifact(conn, "lgbm_1h_text", booster_1h.model_to_string(),
+                   {"horizon": "1h", "format": "lightgbm-text"})
 
-    # 4h model JSON
+    # 4h model JSON + TEXT
     if booster_4h is not None:
         model_json_4h = sanitize_nans(booster_4h.dump_model())
         store_artifact(conn, "lgbm_4h", model_json_4h, {"horizon": "4h"})
+        store_artifact(conn, "lgbm_4h_text", booster_4h.model_to_string(),
+                       {"horizon": "4h", "format": "lightgbm-text"})
 
     # Inference config
     inference_config = {
@@ -848,10 +713,20 @@ def main():
         print(f"  ERROR storing artifacts: {e}")
         traceback.print_exc()
 
+    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+
+    # Step I: Record run in training_history (append-only, never blocks the pipeline)
+    record_training_history(
+        conn,
+        training_meta=training_meta,
+        trigger=detect_trigger_source(),
+        duration_seconds=elapsed,
+        hospital_count=len(baselines),
+    )
+
     conn.close()
 
     # ── Summary ─────────────────────────────────────────────────────
-    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
     print("\n" + "=" * 60)
     print("  PIPELINE COMPLETE")
     print("=" * 60)

@@ -6,7 +6,8 @@ WORKDIR /app
 COPY model/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the refresh script
+# Copy the refresh script + shared feature pipeline
+COPY model/feature_engineering.py ./feature_engineering.py
 COPY model/weekly_refresh.py ./weekly_refresh.py
 
 # Run the refresh
