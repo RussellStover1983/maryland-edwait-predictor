@@ -2,6 +2,7 @@
 .claude/
 phase2-run.log
 *.log
+expresscare-debug-report.md
 
 # Secrets (belt-and-suspenders — nested .gitignore also excludes these)
 .env

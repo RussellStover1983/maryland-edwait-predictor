@@ -3,6 +3,9 @@ dist/
 .env
 .env.local
 
+# TypeScript incremental build cache
+tsconfig.tsbuildinfo
+
 # Generated data — the scripts are the source of truth
 scripts/data/
 collector/data/
