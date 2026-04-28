@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useEDAS } from './hooks/useEDAS';
+import { useGravityResults } from './hooks/useGravityModel';
 import { useDashboardStore } from './store/dashboardStore';
 import MapContainer from './components/Map/MapContainer';
 import DeckHexLayer from './components/Map/DeckHexLayer';
@@ -50,6 +51,7 @@ interface CompetitorLocation {
 
 export default function App() {
   const { hospitals, previousHospitals, lastUpdated, isLive, error } = useEDAS();
+  const { data: gravityData, loading: gravityLoading } = useGravityResults();
   const { layers, selectHospital, view, setView, toggleDataDefinitions } = useDashboardStore();
 
   const [hexScores, setHexScores] = useState<HexBaseScore[]>([]);
@@ -114,7 +116,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <StatewideSummary hospitals={hospitals} hexScores={hexScores} />
           <LiveStatus hospitals={hospitals} previousHospitals={previousHospitals} />
-          <ExpansionOpportunities hexScores={hexScores} />
+          <ExpansionOpportunities hexScores={hexScores} gravityData={gravityData} gravityLoading={gravityLoading} />
           <LocationDetail locations={ecLocations} hospitals={hospitals} />
         </div>
       </aside>
